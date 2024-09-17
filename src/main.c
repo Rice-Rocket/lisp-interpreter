@@ -17,6 +17,7 @@ typedef enum {
     RParen,
     Identifier,
     Operator,
+    Number,
 } TokenType;
 
 typedef struct {
@@ -88,33 +89,52 @@ TokenVector *tokenize(char *input) {
     TokenVector *tokens;
     init_tokens(&tokens);
 
-    char *ident = malloc(0);
-    int has_ident = 0;
+    char *cur_tok = malloc(0);
+    enum {
+        NoToken,
+        IdentToken,
+        NumToken,
+    } cur_tok_ty = NoToken;
 
     for (; *input != '\0'; input++) {
-        if (isalpha(*input)) {
-            has_ident = 1;
+        if (isalpha(*input) || *input == '_') {
+            cur_tok_ty = IdentToken;
             char c = *input;
 
-            size_t ident_len = strlen(ident);
+            size_t ident_len = strlen(cur_tok);
             // one for extra char, one for trailing zero
-            ident = realloc(ident, ident_len + 1 + 1);
-            ident[ident_len] = c;
-            ident[ident_len + 1] = '\0';
+            cur_tok = realloc(cur_tok, ident_len + 1 + 1);
+            cur_tok[ident_len] = c;
+            cur_tok[ident_len + 1] = '\0';
 
             continue;
-        } else {
-            if (has_ident) {
-                has_ident = 0;
-                char *s = malloc(strlen(ident));
-                strcpy(s, ident);
+        } else if (isnumber(*input) || *input == '.') {
+            cur_tok_ty = NumToken;
+            char c = *input;
 
+            size_t ident_len = strlen(cur_tok);
+            // one for extra char, one for trailing zero
+            cur_tok = realloc(cur_tok, ident_len + 1 + 1);
+            cur_tok[ident_len] = c;
+            cur_tok[ident_len + 1] = '\0';
+
+            continue;
+        } else if (cur_tok_ty != NoToken) {
+            char *s = malloc(strlen(cur_tok));
+            strcpy(s, cur_tok);
+
+            if (cur_tok_ty == IdentToken) {
                 Token tok = {.str = s, .type = Identifier};
                 insert_token(tokens, tok);
-
-                free(ident);
-                *ident = *(char *)malloc(0);
+            } else if (cur_tok_ty == NumToken) {
+                Token tok = {.str = s, .type = Number};
+                insert_token(tokens, tok);
             }
+
+            cur_tok_ty = NoToken;
+
+            free(cur_tok);
+            *cur_tok = *(char *)malloc(0);
         }
 
         if (*input == '(') {
@@ -123,18 +143,29 @@ TokenVector *tokenize(char *input) {
         } else if (*input == ')') {
             Token tok = {.str = ")", .type = RParen};
             insert_token(tokens, tok);
+        } else if (*input == '+' || *input == '-' || *input == '*' ||
+                   *input == '/') {
+            char *s = malloc(sizeof(char));
+            *s = *input;
+            Token tok = {.str = s, .type = Operator};
+            insert_token(tokens, tok);
         }
     }
 
-    if (has_ident) {
-        char *s = malloc(strlen(ident));
-        strcpy(s, ident);
+    if (cur_tok_ty != NoToken) {
+        char *s = malloc(strlen(cur_tok));
+        strcpy(s, cur_tok);
 
-        Token tok = {.str = s, .type = Identifier};
-        insert_token(tokens, tok);
+        if (cur_tok_ty == Identifier) {
+            Token tok = {.str = s, .type = Identifier};
+            insert_token(tokens, tok);
+        } else if (cur_tok_ty == Number) {
+            Token tok = {.str = s, .type = Number};
+            insert_token(tokens, tok);
+        }
     }
 
-    free(ident);
+    free(cur_tok);
 
     return tokens;
 }
@@ -192,19 +223,17 @@ AST *parse(TokenVector *tokens) {
         }
 
         tokens->tokens++; // move past rparen
-    } else if (tokens->tokens->type == Operator) {
-
-    } else if (tokens->tokens->type == Identifier) {
+    } else {
         Token *tok = malloc(sizeof(Token));
 
         tok->str = malloc(strlen(tokens->tokens->str));
         strcpy(tok->str, tokens->tokens->str);
-        tok->type = Identifier;
+        tok->type = tokens->tokens->type;
         ast->n_children = 0;
         ast->child_cap = 0;
         ast->tok = tok;
 
-        tokens->tokens++; // move past identifier
+        tokens->tokens++; // move past identifier/operator/number
     }
 
     return ast;
