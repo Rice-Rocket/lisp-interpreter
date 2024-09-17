@@ -18,7 +18,14 @@ typedef enum {
     Identifier,
     Operator,
     Number,
+    Eof,
 } TokenType;
+
+typedef enum {
+    ParseOk,
+    ParseMissingLParen,
+    ParseMissingRParen,
+} ParseResultType;
 
 typedef struct {
     char *str;
@@ -37,6 +44,11 @@ typedef struct AST {
     int child_cap;
     struct AST **children;
 } AST;
+
+typedef struct {
+    ParseResultType type;
+    AST *ast;
+} ASTResult;
 
 void init_tokens(TokenVector **tok_ptr) {
     TokenVector *container;
@@ -167,6 +179,9 @@ TokenVector *tokenize(char *input) {
 
     free(cur_tok);
 
+    Token tok = {.type = Eof};
+    insert_token(tokens, tok);
+
     return tokens;
 }
 
@@ -211,7 +226,7 @@ void print_ast(AST *ast, int depth) {
     }
 }
 
-AST *parse(TokenVector *tokens) {
+ASTResult parse(TokenVector *tokens) {
     AST *ast = malloc(sizeof(AST));
 
     if (tokens->tokens->type == LParen) {
@@ -219,11 +234,21 @@ AST *parse(TokenVector *tokens) {
         tokens->tokens++; // move past lparen
 
         while (tokens->tokens->type != RParen) {
-            insert_child(ast, parse(tokens));
+            ASTResult child = parse(tokens);
+            if (child.type != ParseOk) {
+                return child;
+            }
+
+            if (tokens->tokens->type == Eof) {
+                ASTResult res = {.type = ParseMissingRParen, .ast = NULL};
+                return res;
+            }
+
+            insert_child(ast, child.ast);
         }
 
         tokens->tokens++; // move past rparen
-    } else {
+    } else if (tokens->tokens->type != Eof) {
         Token *tok = malloc(sizeof(Token));
 
         tok->str = malloc(strlen(tokens->tokens->str));
@@ -236,7 +261,8 @@ AST *parse(TokenVector *tokens) {
         tokens->tokens++; // move past identifier/operator/number
     }
 
-    return ast;
+    ASTResult res = {.type = ParseOk, .ast = ast};
+    return res;
 }
 
 int eval_op(char *op, int x, int y) {
@@ -257,12 +283,14 @@ int eval_op(char *op, int x, int y) {
 }
 
 int eval(AST *ast) {
-    if (ast->tok->type == Number) {
-        return atoi(ast->tok->str);
-    }
+    if (ast->tok) {
+        if (ast->tok->type == Number) {
+            return atoi(ast->tok->str);
+        }
 
-    if (ast->tok->type == Identifier) {
-        return 0;
+        if (ast->tok->type == Identifier) {
+            return 0;
+        }
     }
 
     char *op = ast->children[0]->tok->str;
@@ -281,13 +309,33 @@ int main() {
     puts("Press Ctrl+c to Exit\n");
 
     while (1) {
+        int has_error = 0;
         char *input = readline("Lisp > ");
         add_history(input);
 
         TokenVector *tokens = tokenize(input);
 
-        AST *ast = parse(tokens);
-        int v = eval(ast);
+        ASTResult ast = parse(tokens);
+        switch (ast.type) {
+        case ParseOk:
+            break;
+        case ParseMissingLParen:
+            printf("Syntax Error: Missing '('\n");
+            has_error = 1;
+            break;
+        case ParseMissingRParen:
+            printf("Syntax Error: Missing ')'\n");
+            has_error = 1;
+            break;
+        }
+
+        if (has_error) {
+            continue;
+        }
+
+        print_ast(ast.ast, 0);
+
+        int v = eval(ast.ast);
 
         printf("%d\n", v);
 
