@@ -30,6 +30,13 @@ typedef struct {
     Token *tokens;
 } TokenVector;
 
+typedef struct AST {
+    Token *tok;
+    int n_children;
+    int child_cap;
+    struct AST **children;
+} AST;
+
 void init_tokens(TokenVector **tok_ptr) {
     TokenVector *container;
     container = (TokenVector *)malloc(sizeof(TokenVector));
@@ -132,6 +139,77 @@ TokenVector *tokenize(char *input) {
     return tokens;
 }
 
+void init_children(AST *ast) {
+    ast->n_children = 0;
+    ast->child_cap = INITIAL_CAPACITY;
+    ast->children = (AST **)malloc(INITIAL_CAPACITY * sizeof(AST));
+
+    if (!ast->children) {
+        printf("Memory allocation Failed \n");
+        exit(0);
+    }
+}
+
+void insert_child(AST *ast, AST *child) {
+    if (ast->n_children == ast->child_cap) {
+        AST **temp = ast->children;
+        ast->child_cap <<= 1;
+        ast->children = realloc(ast->children, ast->child_cap * sizeof(AST));
+        if (!ast->children) {
+            printf("Out of memory\n");
+            ast->children = temp;
+            return;
+        }
+    }
+    ast->children[ast->n_children++] = child;
+}
+
+void print_ast(AST *ast, int depth) {
+    for (int i = 0; i < depth; i++) {
+        printf("    ");
+    }
+
+    if (ast->n_children == 0) {
+        printf("%s\n", ast->tok->str);
+    } else {
+        printf("Expr:\n");
+
+        for (int i = 0; i < ast->n_children; i++) {
+            print_ast(ast->children[i], depth + 1);
+        }
+    }
+}
+
+AST *parse(TokenVector *tokens) {
+    AST *ast = malloc(sizeof(AST));
+
+    if (tokens->tokens->type == LParen) {
+        init_children(ast);
+        tokens->tokens++; // move past lparen
+
+        while (tokens->tokens->type != RParen) {
+            insert_child(ast, parse(tokens));
+        }
+
+        tokens->tokens++; // move past rparen
+    } else if (tokens->tokens->type == Operator) {
+
+    } else if (tokens->tokens->type == Identifier) {
+        Token *tok = malloc(sizeof(Token));
+
+        tok->str = malloc(strlen(tokens->tokens->str));
+        strcpy(tok->str, tokens->tokens->str);
+        tok->type = Identifier;
+        ast->n_children = 0;
+        ast->child_cap = 0;
+        ast->tok = tok;
+
+        tokens->tokens++; // move past identifier
+    }
+
+    return ast;
+}
+
 int main() {
     puts("Lisp Version 0.0.1");
     puts("Press Ctrl+c to Exit\n");
@@ -141,10 +219,11 @@ int main() {
         add_history(input);
 
         TokenVector *tokens = tokenize(input);
-        print_tokens(tokens);
+
+        AST *ast = parse(tokens);
+        print_ast(ast, 0);
 
         free(input);
-        free_tokens(tokens);
     }
 
     return 0;
