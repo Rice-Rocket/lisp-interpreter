@@ -239,6 +239,43 @@ AST *parse(TokenVector *tokens) {
     return ast;
 }
 
+int eval_op(char *op, int x, int y) {
+    if (*op == '+') {
+        return x + y;
+    }
+    if (*op == '-') {
+        return x - y;
+    }
+    if (*op == '*') {
+        return x * y;
+    }
+    if (*op == '/') {
+        return x / y;
+    }
+
+    return 0;
+}
+
+int eval(AST *ast) {
+    if (ast->tok->type == Number) {
+        return atoi(ast->tok->str);
+    }
+
+    if (ast->tok->type == Identifier) {
+        return 0;
+    }
+
+    char *op = ast->children[0]->tok->str;
+
+    int x = eval(ast->children[1]);
+
+    for (int i = 2; i < ast->n_children; i++) {
+        x = eval_op(op, x, eval(ast->children[i]));
+    }
+
+    return x;
+}
+
 int main() {
     puts("Lisp Version 0.0.1");
     puts("Press Ctrl+c to Exit\n");
@@ -250,7 +287,9 @@ int main() {
         TokenVector *tokens = tokenize(input);
 
         AST *ast = parse(tokens);
-        print_ast(ast, 0);
+        int v = eval(ast);
+
+        printf("%d\n", v);
 
         free(input);
     }
